@@ -17,7 +17,6 @@ package com.example.android.sunshine.app;
 
 import android.content.Context;
 import android.database.Cursor;
-import android.os.Build;
 import android.os.Bundle;
 import android.support.v4.view.ViewCompat;
 import android.support.v7.widget.RecyclerView;
@@ -25,24 +24,40 @@ import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.Checkable;
 import android.widget.ImageView;
 import android.widget.TextView;
 
 import com.bumptech.glide.Glide;
 import com.example.android.sunshine.app.data.WeatherContract;
+import com.google.android.gms.common.ConnectionResult;
+import com.google.android.gms.common.api.GoogleApiClient;
+import com.google.android.gms.common.api.PendingResult;
+import com.google.android.gms.common.api.ResultCallback;
+import com.google.android.gms.wearable.DataApi;
+import com.google.android.gms.wearable.DataEventBuffer;
+import com.google.android.gms.wearable.DataMap;
+import com.google.android.gms.wearable.DataMapItem;
+import com.google.android.gms.wearable.PutDataMapRequest;
+import com.google.android.gms.wearable.PutDataRequest;
+import com.google.android.gms.wearable.Wearable;
 
 /**
  * {@link ForecastAdapter} exposes a list of weather forecasts
  * from a {@link android.database.Cursor} to a {@link android.support.v7.widget.RecyclerView}.
  */
-public class ForecastAdapter extends RecyclerView.Adapter<ForecastAdapter.ForecastAdapterViewHolder> {
-
+public class ForecastAdapter extends RecyclerView.Adapter<ForecastAdapter.ForecastAdapterViewHolder> implements
+        DataApi.DataListener,
+        GoogleApiClient.ConnectionCallbacks,
+        GoogleApiClient.OnConnectionFailedListener
+{
+    private GoogleApiClient mGoogleApiClient;
     private static final int VIEW_TYPE_TODAY = 0;
     private static final int VIEW_TYPE_FUTURE_DAY = 1;
+    PutDataRequest putDataReq;
 
     // Flag to determine if we want to use a separate view for "today".
     private boolean mUseTodayLayout = true;
+    int mViewType;
 
     private Cursor mCursor;
     final private Context mContext;
@@ -60,6 +75,7 @@ public class ForecastAdapter extends RecyclerView.Adapter<ForecastAdapter.Foreca
         public final TextView mHighTempView;
         public final TextView mLowTempView;
 
+
         public ForecastAdapterViewHolder(View view) {
             super(view);
             mIconView = (ImageView) view.findViewById(R.id.list_item_icon);
@@ -68,6 +84,7 @@ public class ForecastAdapter extends RecyclerView.Adapter<ForecastAdapter.Foreca
             mHighTempView = (TextView) view.findViewById(R.id.list_item_high_textview);
             mLowTempView = (TextView) view.findViewById(R.id.list_item_low_textview);
             view.setOnClickListener(this);
+
         }
 
         @Override
@@ -90,6 +107,8 @@ public class ForecastAdapter extends RecyclerView.Adapter<ForecastAdapter.Foreca
         mEmptyView = emptyView;
         mICM = new ItemChoiceManager(this);
         mICM.setChoiceMode(choiceMode);
+
+
     }
 
     /*
@@ -103,6 +122,7 @@ public class ForecastAdapter extends RecyclerView.Adapter<ForecastAdapter.Foreca
     @Override
     public ForecastAdapterViewHolder onCreateViewHolder(ViewGroup viewGroup, int viewType) {
         if ( viewGroup instanceof RecyclerView ) {
+            mViewType=viewType;
             int layoutId = -1;
             switch (viewType) {
                 case VIEW_TYPE_TODAY: {
@@ -124,6 +144,9 @@ public class ForecastAdapter extends RecyclerView.Adapter<ForecastAdapter.Foreca
 
     @Override
     public void onBindViewHolder(ForecastAdapterViewHolder forecastAdapterViewHolder, int position) {
+
+
+
         mCursor.moveToPosition(position);
         int weatherId = mCursor.getInt(ForecastFragment.COL_WEATHER_CONDITION_ID);
         int defaultImage;
@@ -183,6 +206,35 @@ public class ForecastAdapter extends RecyclerView.Adapter<ForecastAdapter.Foreca
         forecastAdapterViewHolder.mLowTempView.setContentDescription(mContext.getString(R.string.a11y_low_temp, lowString));
 
         mICM.onBindViewHolder(forecastAdapterViewHolder, position);
+        Log.d("Came here","Iadfdfgdgnected");
+        if (getItemViewType(position)==VIEW_TYPE_TODAY){
+            Log.d("Came here","Is not connected");
+            PutDataMapRequest putDataMapReq = PutDataMapRequest.create("/facedata");
+            putDataMapReq.getDataMap().putString("High.temp", highString);
+            putDataReq = putDataMapReq.asPutDataRequest();
+            putDataReq.setUrgent();
+
+            mGoogleApiClient = new GoogleApiClient.Builder(mContext)
+                    .addApi(Wearable.API)
+                    .addConnectionCallbacks(this)
+                    .addOnConnectionFailedListener(this)
+                    .build();
+            mGoogleApiClient.connect();
+
+            if(!mGoogleApiClient.isConnected()){
+                Log.d("Google API","Is not connected");
+            }
+
+
+
+        }
+
+
+
+
+
+
+
     }
 
     public void onRestoreInstanceState(Bundle savedInstanceState) {
@@ -227,5 +279,41 @@ public class ForecastAdapter extends RecyclerView.Adapter<ForecastAdapter.Foreca
             ForecastAdapterViewHolder vfh = (ForecastAdapterViewHolder)viewHolder;
             vfh.onClick(vfh.itemView);
         }
+    }
+
+    @Override
+    public void onConnected(Bundle bundle) {
+        Log.d("Google Api","Connected");
+
+        PendingResult<DataApi.DataItemResult> pendingResult =
+                Wearable.DataApi.putDataItem(mGoogleApiClient, putDataReq);
+
+        pendingResult.setResultCallback(new ResultCallback<DataApi.DataItemResult>() {
+            @Override
+            public void onResult(final DataApi.DataItemResult result) {
+                if(result.getStatus().isSuccess()) {
+                    DataMap dataMap = DataMapItem.fromDataItem(result.getDataItem()).getDataMap();
+                    Log.d("---Adapter-----", "Data item set: " +dataMap.getString("High.temp") );
+                }
+            }
+        });
+
+
+
+    }
+
+    @Override
+    public void onConnectionSuspended(int i) {
+
+    }
+
+    @Override
+    public void onDataChanged(DataEventBuffer dataEventBuffer) {
+
+    }
+
+    @Override
+    public void onConnectionFailed(ConnectionResult connectionResult) {
+            Log.d("Google Api","Connection Failed");
     }
 }
