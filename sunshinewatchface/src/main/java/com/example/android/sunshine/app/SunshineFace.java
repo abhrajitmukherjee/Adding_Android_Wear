@@ -21,11 +21,14 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.res.Resources;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Rect;
 import android.graphics.Typeface;
+import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
@@ -42,6 +45,7 @@ import com.example.android.sunshine.R;
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.api.GoogleApiClient;
 import com.google.android.gms.common.api.ResultCallback;
+import com.google.android.gms.wearable.Asset;
 import com.google.android.gms.wearable.DataApi;
 import com.google.android.gms.wearable.DataEvent;
 import com.google.android.gms.wearable.DataEventBuffer;
@@ -51,6 +55,7 @@ import com.google.android.gms.wearable.DataMap;
 import com.google.android.gms.wearable.DataMapItem;
 import com.google.android.gms.wearable.Wearable;
 
+import java.io.InputStream;
 import java.lang.ref.WeakReference;
 import java.util.TimeZone;
 import java.util.concurrent.TimeUnit;
@@ -105,8 +110,13 @@ public class SunshineFace extends CanvasWatchFaceService
             GoogleApiClient.OnConnectionFailedListener{
         final Handler mUpdateTimeHandler = new EngineHandler(this);
         boolean mRegisteredTimeZoneReceiver = false;
+        final String TAG=Engine.class.getName();
         Paint mBackgroundPaint;
         Paint mTextPaint;
+        Paint mTempPaint;
+        Bitmap mBackgroundBitmap;
+        String mDate;
+        String mDesc;
         boolean mAmbient;
         Time mTime;
         final BroadcastReceiver mTimeZoneReceiver = new BroadcastReceiver() {
@@ -117,6 +127,8 @@ public class SunshineFace extends CanvasWatchFaceService
             }
         };
         int mTapCount;
+        String mHigh="-";
+        String mLow="-";
 
         float mXOffset;
         float mYOffset;
@@ -150,6 +162,10 @@ public class SunshineFace extends CanvasWatchFaceService
 
             mTextPaint = new Paint();
             mTextPaint = createTextPaint(resources.getColor(R.color.digital_text));
+
+            mTempPaint= new Paint();
+            mTempPaint = createTextPaint(resources.getColor(R.color.digital_text));
+
 
             mTime = new Time();
         }
@@ -221,7 +237,12 @@ public class SunshineFace extends CanvasWatchFaceService
             float textSize = resources.getDimension(isRound
                     ? R.dimen.digital_text_size_round : R.dimen.digital_text_size);
 
+            float tempSize=resources.getDimension(isRound
+                    ? R.dimen.digital_temp_size_round : R.dimen.digital_temp_size);
+
             mTextPaint.setTextSize(textSize);
+            mTempPaint.setTextSize(tempSize);
+
         }
 
         @Override
@@ -288,9 +309,19 @@ public class SunshineFace extends CanvasWatchFaceService
             // Draw H:MM in ambient mode or H:MM:SS in interactive mode.
             mTime.setToNow();
             String text = mAmbient
-                    ? String.format("%d:%02d", mTime.hour, mTime.minute)
-                    : String.format("%d:%02d:%02d", mTime.hour, mTime.minute, mTime.second);
+                    ? String.format("%02d:%02d", mTime.hour, mTime.minute)
+                    : String.format("%02d:%02d", mTime.hour, mTime.minute);
             canvas.drawText(text, mXOffset, mYOffset, mTextPaint);
+            if (!mAmbient){
+                if (mBackgroundBitmap!=null){
+                    canvas.drawBitmap(mBackgroundBitmap, mXOffset-20, mYOffset+40, mBackgroundPaint);
+
+                }
+                canvas.drawText(mHigh+" "+mLow, mXOffset+50, mYOffset+80, mTempPaint);
+
+            }
+
+
         }
 
         /**
@@ -328,7 +359,9 @@ public class SunshineFace extends CanvasWatchFaceService
                     if (event.getType() == DataEvent.TYPE_CHANGED) {
                         DataItem item = event.getDataItem();
                         DataMap dataMap = DataMapItem.fromDataItem(item).getDataMap();
-                        Log.d("MESSAGE",dataMap.getString("High.temp"));
+                        setValuesFromDataMap(dataMap);
+                        Log.d("Receiver: High",mHigh);
+                        Log.d("Receiver: Low",mLow);
                     }
                 }
 
@@ -336,6 +369,16 @@ public class SunshineFace extends CanvasWatchFaceService
 //                invalidateIfNecessary();
             }
         };
+        private void setValuesFromDataMap(DataMap dataMap){
+
+            mHigh=dataMap.getString("High.temp");
+            mLow=dataMap.getString("Low.temp");
+            mDate=dataMap.getString("Date.temp");
+            mDesc=dataMap.getString("Desc.temp");
+            Asset asset=dataMap.getAsset("Image.temp");
+            new LoadBitmapAsyncTask().execute(asset);
+
+        }
 
         private final ResultCallback<DataItemBuffer> onConnectedResultCallback = new ResultCallback<DataItemBuffer>() {
             @Override
@@ -343,12 +386,14 @@ public class SunshineFace extends CanvasWatchFaceService
                 Log.d("ENGINE",dataItems.toString());
                 for (DataItem item : dataItems) {
                     DataMap dataMap = DataMapItem.fromDataItem(item).getDataMap();
-                    Log.d("MESSAGE",dataMap.getString("High.temp"));
+                    setValuesFromDataMap(dataMap);
+
+                    //Log.d("INIT",dataMap.getString("Desc.temp"));
 //                        if (item.getUri().getPath().compareTo("/facedata") == 0) {
 //                            DataMap dataMap = DataMapItem.fromDataItem(item).getDataMap();
 //                            Log.d("MESSAGE",dataMap.getString("High.temp"));
 //                        }
-
+                    dataItems.release();
                 }
             }
         };
@@ -376,5 +421,43 @@ public class SunshineFace extends CanvasWatchFaceService
                 mUpdateTimeHandler.sendEmptyMessageDelayed(MSG_UPDATE_TIME, delayMs);
             }
         }
+
+
+        private class LoadBitmapAsyncTask extends AsyncTask<Asset, Void, Bitmap> {
+
+            @Override
+            protected Bitmap doInBackground(Asset... params) {
+
+                if (params.length > 0) {
+
+                    Asset asset = params[0];
+
+                    InputStream assetInputStream = Wearable.DataApi.getFdForAsset(
+                            mGoogleApiClient, asset).await().getInputStream();
+
+                    if (assetInputStream == null) {
+                        Log.w(TAG, "Requested an unknown Asset.");
+                        return null;
+                    }
+                    return BitmapFactory.decodeStream(assetInputStream);
+
+                } else {
+                    Log.e(TAG, "Asset must be non-null");
+                    return null;
+                }
+            }
+
+            @Override
+            protected void onPostExecute(Bitmap bitmap) {
+
+                if (bitmap != null) {
+                    // mAssetFragment.setBackgroundImage(bitmap);
+                    mBackgroundBitmap=Bitmap.createScaledBitmap(bitmap, 60, 60,true);
+                }
+            }
+
+        }
     }
-}
+
+    }
+

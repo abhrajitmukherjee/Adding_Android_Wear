@@ -17,6 +17,8 @@ package com.example.android.sunshine.app;
 
 import android.content.Context;
 import android.database.Cursor;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.os.Bundle;
 import android.support.v4.view.ViewCompat;
 import android.support.v7.widget.RecyclerView;
@@ -33,6 +35,7 @@ import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.api.GoogleApiClient;
 import com.google.android.gms.common.api.PendingResult;
 import com.google.android.gms.common.api.ResultCallback;
+import com.google.android.gms.wearable.Asset;
 import com.google.android.gms.wearable.DataApi;
 import com.google.android.gms.wearable.DataEventBuffer;
 import com.google.android.gms.wearable.DataMap;
@@ -40,6 +43,8 @@ import com.google.android.gms.wearable.DataMapItem;
 import com.google.android.gms.wearable.PutDataMapRequest;
 import com.google.android.gms.wearable.PutDataRequest;
 import com.google.android.gms.wearable.Wearable;
+
+import java.io.ByteArrayOutputStream;
 
 /**
  * {@link ForecastAdapter} exposes a list of weather forecasts
@@ -142,6 +147,12 @@ public class ForecastAdapter extends RecyclerView.Adapter<ForecastAdapter.Foreca
         }
     }
 
+    private static Asset createAssetFromBitmap(Bitmap bitmap) {
+        final ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
+        bitmap.compress(Bitmap.CompressFormat.PNG, 100, byteStream);
+        return Asset.createFromBytes(byteStream.toByteArray());
+    }
+
     @Override
     public void onBindViewHolder(ForecastAdapterViewHolder forecastAdapterViewHolder, int position) {
 
@@ -206,11 +217,20 @@ public class ForecastAdapter extends RecyclerView.Adapter<ForecastAdapter.Foreca
         forecastAdapterViewHolder.mLowTempView.setContentDescription(mContext.getString(R.string.a11y_low_temp, lowString));
 
         mICM.onBindViewHolder(forecastAdapterViewHolder, position);
-        Log.d("Came here","Iadfdfgdgnected");
         if (getItemViewType(position)==VIEW_TYPE_TODAY){
-            Log.d("Came here","Is not connected");
             PutDataMapRequest putDataMapReq = PutDataMapRequest.create("/facedata");
             putDataMapReq.getDataMap().putString("High.temp", highString);
+            putDataMapReq.getDataMap().putString("Low.temp", lowString);
+            putDataMapReq.getDataMap().putString("Desc.temp", description);
+            putDataMapReq.getDataMap().putInt("Desc.temp", defaultImage);
+            int imageID=Utility.getArtResourceForWeatherCondition(weatherId);
+            Bitmap bitmap = BitmapFactory.decodeResource(mContext.getResources(), imageID);
+            Asset asset = createAssetFromBitmap(bitmap);
+            putDataMapReq.getDataMap().putAsset("Image.temp", asset);
+
+            String fullDay=Utility.getFriendlyDayString(mContext, dateInMillis, useLongToday);
+            putDataMapReq.getDataMap().putString("Date.temp", fullDay.substring(fullDay.indexOf(",")+2));
+
             putDataReq = putDataMapReq.asPutDataRequest();
             putDataReq.setUrgent();
 
@@ -220,12 +240,6 @@ public class ForecastAdapter extends RecyclerView.Adapter<ForecastAdapter.Foreca
                     .addOnConnectionFailedListener(this)
                     .build();
             mGoogleApiClient.connect();
-
-            if(!mGoogleApiClient.isConnected()){
-                Log.d("Google API","Is not connected");
-            }
-
-
 
         }
 
