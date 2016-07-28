@@ -222,7 +222,6 @@ public class ForecastAdapter extends RecyclerView.Adapter<ForecastAdapter.Foreca
             putDataMapReq.getDataMap().putString("High.temp", highString);
             putDataMapReq.getDataMap().putString("Low.temp", lowString);
             putDataMapReq.getDataMap().putString("Desc.temp", description);
-            putDataMapReq.getDataMap().putInt("Desc.temp", defaultImage);
             int imageID=Utility.getArtResourceForWeatherCondition(weatherId);
             Bitmap bitmap = BitmapFactory.decodeResource(mContext.getResources(), imageID);
             Asset asset = createAssetFromBitmap(bitmap);

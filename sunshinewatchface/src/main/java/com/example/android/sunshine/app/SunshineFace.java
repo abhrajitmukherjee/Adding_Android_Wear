@@ -38,6 +38,7 @@ import android.support.wearable.watchface.CanvasWatchFaceService;
 import android.support.wearable.watchface.WatchFaceStyle;
 import android.text.format.Time;
 import android.util.Log;
+import android.view.Gravity;
 import android.view.SurfaceHolder;
 import android.view.WindowInsets;
 
@@ -114,6 +115,7 @@ public class SunshineFace extends CanvasWatchFaceService
         Paint mBackgroundPaint;
         Paint mTextPaint;
         Paint mTempPaint;
+        Paint mLightPaint;
         Bitmap mBackgroundBitmap;
         String mDate;
         String mDesc;
@@ -151,11 +153,14 @@ public class SunshineFace extends CanvasWatchFaceService
             setWatchFaceStyle(new WatchFaceStyle.Builder(SunshineFace.this)
                     .setCardPeekMode(WatchFaceStyle.PEEK_MODE_VARIABLE)
                     .setBackgroundVisibility(WatchFaceStyle.BACKGROUND_VISIBILITY_INTERRUPTIVE)
+                    .setHotwordIndicatorGravity(Gravity.TOP | Gravity.CENTER_HORIZONTAL)
                     .setShowSystemUiTime(false)
                     .setAcceptsTapEvents(true)
                     .build());
             Resources resources = SunshineFace.this.getResources();
-            mYOffset = resources.getDimension(R.dimen.digital_y_offset);
+
+
+
 
             mBackgroundPaint = new Paint();
             mBackgroundPaint.setColor(resources.getColor(R.color.background));
@@ -166,6 +171,8 @@ public class SunshineFace extends CanvasWatchFaceService
             mTempPaint= new Paint();
             mTempPaint = createTextPaint(resources.getColor(R.color.digital_text));
 
+            mLightPaint=new Paint();
+            mLightPaint = createTextPaint(resources.getColor(R.color.light_text));
 
             mTime = new Time();
         }
@@ -232,6 +239,8 @@ public class SunshineFace extends CanvasWatchFaceService
             // Load resources that have alternate values for round watches.
             Resources resources = SunshineFace.this.getResources();
             boolean isRound = insets.isRound();
+            mYOffset = resources.getDimension(isRound
+                    ? R.dimen.digital_y_offset_round : R.dimen.digital_y_offset);
             mXOffset = resources.getDimension(isRound
                     ? R.dimen.digital_x_offset_round : R.dimen.digital_x_offset);
             float textSize = resources.getDimension(isRound
@@ -242,6 +251,7 @@ public class SunshineFace extends CanvasWatchFaceService
 
             mTextPaint.setTextSize(textSize);
             mTempPaint.setTextSize(tempSize);
+            mLightPaint.setTextSize(tempSize);
 
         }
 
@@ -312,12 +322,19 @@ public class SunshineFace extends CanvasWatchFaceService
                     ? String.format("%02d:%02d", mTime.hour, mTime.minute)
                     : String.format("%02d:%02d", mTime.hour, mTime.minute);
             canvas.drawText(text, mXOffset, mYOffset, mTextPaint);
+
             if (!mAmbient){
                 if (mBackgroundBitmap!=null){
                     canvas.drawBitmap(mBackgroundBitmap, mXOffset-20, mYOffset+40, mBackgroundPaint);
 
                 }
-                canvas.drawText(mHigh+" "+mLow, mXOffset+50, mYOffset+80, mTempPaint);
+                if(mDate!=null && mHigh!=null && mLow!=null&& mDesc!=null){
+                    canvas.drawText(mHigh+" "+mLow, mXOffset+50, mYOffset+80, mTempPaint);
+                    canvas.drawText(mDate,mXOffset+30, mYOffset+30, mLightPaint);
+
+
+                }
+
 
             }
 
@@ -376,6 +393,7 @@ public class SunshineFace extends CanvasWatchFaceService
             mDate=dataMap.getString("Date.temp");
             mDesc=dataMap.getString("Desc.temp");
             Asset asset=dataMap.getAsset("Image.temp");
+            Log.d(TAG,mDate);
             new LoadBitmapAsyncTask().execute(asset);
 
         }
